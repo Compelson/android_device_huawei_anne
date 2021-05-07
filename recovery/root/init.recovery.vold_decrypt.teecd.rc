@@ -1,0 +1,23 @@
+on fs
+     mkdir /sec_storage
+     wait /dev/block/bootdevice/by-name/secure_storage
+     mount ext4 /dev/block/bootdevice/by-name/secure_storage /sec_storage nosuid nodev noatime wait crypt discard,auto_da_alloc,mblk_io_submit,data=journal,context=u:object_r:teecd_data_file:s0
+     chown root root /sec_storage
+     chmod 600 /sec_storage
+     chmod 0400 /dev/hisi_teelog
+
+service sys_teecd /system/bin/teecd
+   class core
+    user root
+    group root readproc
+    setenv PATH /system/bin:/system/vendor/bin:/vendor/bin
+    setenv LD_LIBRARY_PATH /system/lib64:/system/lib:/system/vendor/lib64:/system/vendor/lib:/vendor/lib64:/vendor/lib
+    seclabel u:r:recovery:s0
+
+service ven_teecd /vendor/bin/teecd
+    class core
+    user root
+    group root readproc
+    setenv PATH /vendor/bin:/system/bin:/system/vendor/bin
+    setenv LD_LIBRARY_PATH /vendor/lib64:/system/lib64:/vendor/lib:/system/lib:/system/vendor/lib64:/system/vendor/lib
+    seclabel u:r:recovery:s0

@@ -1,15 +1,23 @@
 import /init.recovery.hi6250.usb.rc
 
-on fs
-    start fixlinks
+service fixsysven /sbin/fixsysven.sh
+    oneshot
+    disabled
+    seclabel u:r:recovery:s0
+
+service prepprops /sbin/setprop.sh
+    oneshot
+    seclabel u:r:recovery:s0
+    
+service relink /sbin/relink.sh
+    oneshot
+    seclabel u:r:recovery:s0
 
 service fixlinks /sbin/fixlinks.sh
     oneshot
     disabled
     seclabel u:r:recovery:s0
 
-service oeminfo_nvm /sbin/true
-    disabled
 
 on fs && property:sys.usb.configfs=0
     write /sys/class/android_usb/android0/f_ffs/aliases adb
@@ -29,3 +37,94 @@ on fs && property:sys.usb.configfs=0
 on boot
     chown system system /sys/devices/platform/ff200000.hisi_usb/plugusb
     chmod 0660 /sys/devices/platform/ff200000.hisi_usb/plugusb
+
+on init
+     start fixlinks
+     start relink
+     start prepprops
+     mkdir /sec_storage
+     wait /dev/block/bootdevice/by-name/secure_storage
+     mount ext4 /dev/block/bootdevice/by-name/secure_storage /sec_storage nosuid nodev noatime wait crypt discard,auto_da_alloc,mblk_io_submit,data=journal,context=u:object_r:teecd_data_file:s0
+     chown root root /sec_storage
+     chmod 600 /sec_storage
+     chmod 0400 /dev/hisi_teelog
+
+service oeminfo_nvm /sbin/true
+    disabled
+    seclabel u:r:recovery:s0
+
+on fs
+    wait /dev/block/bootdevice/by-name/oeminfo
+    start oeminfo_nvm
+    install_keyring
+
+service teecd /vendor/bin/teecd
+    class core
+    user root
+    group root readproc
+    seclabel u:r:recovery:s0
+
+service hwservicemanager /sbin/hwservicemanager
+    user root
+    group root
+    disabled
+    onrestart setprop hwservicemanager.ready false
+    seclabel u:r:recovery:s0
+
+service servicemanager /sbin/servicemanager
+    user root
+    group root readproc
+    disabled
+    seclabel u:r:recovery:s0
+
+service keystore_auth /sbin/keystore_auth
+    oneshot
+    user system
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+service keystore /sbin/keystore /data/misc/keystore
+    user root
+    group root drmrpc readproc
+    disabled
+    seclabel u:r:recovery:s0
+
+service gatekeeper-1-0 /vendor/bin/android.hardware.gatekeeper@1.0-service
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+service keymaster-3-0 /vendor/bin/android.hardware.keymaster@3.0-service
+    user root
+    group root
+    disabled
+    seclabel u:r:recovery:s0
+
+on property:crypto.ready=0
+    stop teecd
+    stop keymaster-3-0
+    stop gatekeeper-1-0
+    stop hwservicemanager
+    stop keystore
+    stop servicemanager
+
+on property:crypto.ready=1
+    start oeminfo_nvm
+    start hwservicemanager
+    start keymaster-3-0
+    start teecd
+    start gatekeeper-1-0
+    start servicemanager
+
+on property:twrp.decryptdone=true
+        stop vold
+        stop teecd
+        stop gatekeeper-1-0
+        stop keymaster-3-0
+        stop servicemanager
+        stop hwservicemanager
+        umount /vendor
+        umount /system
+        start fixsysven
